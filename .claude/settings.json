@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "chan-tools": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/Users/konraddiesch/TouchDesigner/td-dc-visuals/tools/chan_mcp.py"
+      ]
+    }
+  }
+}

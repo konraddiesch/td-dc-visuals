@@ -1,0 +1,11 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "mcp": {
+    "chan-tools": {
+      "type": "local",
+      "command": ["python3", "/Users/konraddiesch/TouchDesigner/td-dc-visuals/tools/chan_mcp.py"],
+      "enabled": true
+    }
+  }
+}

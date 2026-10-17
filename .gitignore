@@ -11,3 +11,8 @@ entities.json
 .DS_Store
 __pycache__/
 *.pyc
+
+# TouchDesigner backups & crash autosaves (kept locally, not versioned)
+Backup/
+CrashAutoSave*
+digital_carbs_visuals.*.toe

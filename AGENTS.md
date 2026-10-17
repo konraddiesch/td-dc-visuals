@@ -48,3 +48,11 @@ MCP server at `tools/chan_mcp.py` auto-registers `chan_list`, `chan_info`, `chan
 - `.toe` backups (`Backup/`, numbered root versions, `CrashAutoSave*`) are gitignored — only `digital_carbs_visuals.toe` is versioned
 - Backups are manual `.toe` copies with incrementing numbers
 - The repo lives on an exFAT volume; macOS creates `._*` AppleDouble files (gitignored) that can break `git gc` — delete them before running gc
+
+## Session memory (MemPalace)
+
+At the end of every session, automatically save a checkpoint to MemPalace so conversations persist across sessions:
+
+- Call `mempalace_checkpoint` with the session's key decisions/outcomes as `items` (wing `td_dc_visuals`, room `decisions`), plus a `diary` entry (agent `opencode`, AAAK format).
+- Do this without being asked — it is the default behavior.
+- Keep items verbatim and concise; never summarize away specifics like file paths, commit hashes, or exact numbers.

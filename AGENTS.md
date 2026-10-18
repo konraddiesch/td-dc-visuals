@@ -45,8 +45,8 @@ Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containe
 The `touchdesigner` MCP drives the running TD instance (WebServer DAT, port 9981). Generic harness lives in the global opencode config: skill `touchdesigner-mcp`, agent + command `td` — **load the skill before any TD MCP work** (`/td <task>`). Full tool/workflow/persistence rules are in the skill; project-specifics:
 
 - **Right project check**: the top level must show `songs`, `dc_audio_analysis_v2`, `dc_midi_v1` (plus `perform`, `moviefileout1`, `audiodevin1`, `midiin1`, …). If a scratch/default project is open, ask the user to open `digital_carbs_visuals.toe` first.
-- **Harness code**: the TD-side MCP server that TD actually imports is `/Volumes/Visuals/touchdesigner-mcp/modules` (its `import_modules.py` resolves that dir from the tox path). ⚠️ The byte-identical duplicate that used to live at `/Volumes/Visuals/TouchDesigner/touchdesigner-mcp/` was **removed 2026-10-17** — edit only the loaded copy. (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.) Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
-- **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with explicit path `project.save('/Volumes/Visuals/TouchDesigner/td-dc-visuals/digital_carbs_visuals.toe')` — `project.save()` without path writes numbered auto-versions (gitignored).
+- **Harness code**: the TD-side MCP server that TD actually imports is the `modules/` dir of your `touchdesigner-mcp` checkout (by convention a sibling of this repo, e.g. `../touchdesigner-mcp/modules`; its `import_modules.py` resolves that dir from the tox path). ⚠️ The byte-identical duplicate that used to live there was **removed 2026-10-17** — edit only the loaded copy. (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.) Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
+- **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with an explicit absolute path to this repo's root, `project.save('<repo-root>/digital_carbs_visuals.toe')` — `project.save()` without path writes numbered auto-versions (gitignored).
 - **Namespaces**: `touchdesigner_*` (live), `touchdesigner-wiki_*` (docs), `chan-tools_*` (`.chan` data) — never mix.
 
 ## Creating a new song visual
@@ -73,14 +73,16 @@ Song-agnostic components live in `components/` as `.tox` files. The house patter
 
 Recorded at 60 fps, space-separated floats, one row per frame. Comment lines start with `#`. Header lists channel names (e.g. `smsd_bass fmsd_bass sc_bass smsd_drums`). Stored under `data/<song>/<YYYYMMDD_ort>/`.
 
-## Python tools
+## `.chan` tools (external)
+
+The `.chan` analysis tooling lives in its own repo — **`chan-tools`** (`~/Code/chan-tools`, sibling convention) — not in this project. This repo only *references* it; credentials-free, project-agnostic. Keep the separation: don't re-vendor the scripts here.
 
 Dependencies: `numpy`, `matplotlib`.
 
-- `python3 tools/chan_stats.py <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
-- `python3 tools/plot_chan.py <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
+- `python3 ~/Code/chan-tools/chan_stats.py <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
+- `python3 ~/Code/chan-tools/plot_chan.py <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
 
-MCP server at `tools/chan_mcp.py` auto-registers `chan_list`, `chan_info`, `chan_analyze`, `chan_plot` via `.claude/settings.json`. Path resolution: absolute → project root → `visuals/<path>`.
+The MCP server `chan_mcp.py` auto-registers `chan_list`, `chan_info`, `chan_analyze`, `chan_plot`. A global opencode skill `chan-tools` documents the workflow — load it before any `.chan` MCP work. It is wired via `opencode.json` (`{env:HOME}/Code/chan-tools/chan_mcp.py`) and `.claude/settings.json` (`$HOME/Code/chan-tools/chan_mcp.py`). It resolves the *data* project from `CHAN_PROJECT_ROOT`, else the process cwd (the MCP host spawns it in the project workspace). File paths: absolute → project root → `visuals/<path>`.
 
 ## Gotchas
 
@@ -91,7 +93,15 @@ MCP server at `tools/chan_mcp.py` auto-registers `chan_list`, `chan_info`, `chan
 
 ## Session memory (MemPalace)
 
-At the end of every session, automatically save a checkpoint to MemPalace so conversations persist across sessions:
+**Session start (read) — do this before answering, not on request:**
+
+- Call `mempalace_status` once to load the palace overview + AAAK spec.
+- Call `mempalace_diary_read` (`agent_name: opencode`, `last_n: 3-5`) for recent agent continuity.
+- Before any statement about a past decision, a past session, or a file/commit history, verify with a **narrow** `mempalace_search` (small `limit`, relevant scope) — never guess. Widen only if recall is insufficient.
+
+Shell access alone is not enough: the palace often holds the *why* behind repo state.
+
+**Session end (write) — automatic:**
 
 - Call `mempalace_checkpoint` with the session's key decisions/outcomes as `items` (wing `td_dc_visuals`, room `decisions`), plus a `diary` entry (agent `opencode`, AAAK format).
 - Do this without being asked — it is the default behavior.

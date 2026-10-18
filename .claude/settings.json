@@ -2,9 +2,10 @@
   "mcpServers": {
     "chan-tools": {
       "type": "stdio",
-      "command": "python3",
+      "command": "bash",
       "args": [
-        "/Volumes/Visuals/TouchDesigner/td-dc-visuals/tools/chan_mcp.py"
+        "-c",
+        "for d in \"$PWD/../chan-tools\" \"$HOME/Code/chan-tools\" /mnt/c/Code/chan-tools; do [ -f \"$d/chan_mcp.py\" ] && exec python3 \"$d/chan_mcp.py\"; done; echo 'chan-tools/chan_mcp.py not found' >&2; exit 1"
       ]
     }
   }

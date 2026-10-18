@@ -73,14 +73,26 @@ Song-agnostic components live in `components/` as `.tox` files. The house patter
 
 Recorded at 60 fps, space-separated floats, one row per frame. Comment lines start with `#`. Header lists channel names (e.g. `smsd_bass fmsd_bass sc_bass smsd_drums`). Stored under `data/<song>/<YYYYMMDD_ort>/`.
 
-## Python tools
+## Python tools (`chan-tools`)
 
-Dependencies: `numpy`, `matplotlib`.
+The `.chan` tooling is **not** part of this repo — it lives in the standalone,
+project-agnostic repo `$HOME/Code/chan-tools` (`/mnt/c/Code/chan-tools` on this
+machine, `/Volumes/Visuals/TouchDesigner`-independent). The MCP server resolves
+the data root from `CHAN_PROJECT_ROOT`, else the process cwd (the workspace),
+and always finds its helper scripts next to itself.
 
-- `python3 tools/chan_stats.py <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
-- `python3 tools/plot_chan.py <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
+Dependencies: `numpy`, `matplotlib` (`chan-tools/requirements.txt`). The server
+is stdlib-only and falls back to `uv run --with numpy --with matplotlib` when
+the interpreter lacks them.
 
-MCP server at `tools/chan_mcp.py` auto-registers `chan_list`, `chan_info`, `chan_analyze`, `chan_plot` via `.claude/settings.json`. Path resolution: absolute → project root → `visuals/<path>`.
+- `python3 "$HOME/Code/chan-tools/chan_stats.py" <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
+- `python3 "$HOME/Code/chan-tools/plot_chan.py" <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
+
+MCP server `chan-tools` registers `chan_list`, `chan_info`, `chan_analyze`,
+`chan_plot`. In opencode it comes from the **global** config
+(`~/.config/opencode/opencode.jsonc`), so this project's `opencode.json` must
+not declare a competing `chan-tools` entry. Path resolution: absolute → project
+root → `visuals/<path>` → bare filename anywhere in the project.
 
 ## Gotchas
 

@@ -2,9 +2,10 @@
   "mcpServers": {
     "chan-tools": {
       "type": "stdio",
-      "command": "python3",
+      "command": "bash",
       "args": [
-        "/Volumes/Visuals/TouchDesigner/td-dc-visuals/tools/chan_mcp.py"
+        "-lc",
+        "exec python3 \"$HOME/Code/chan-tools/chan_mcp.py\""
       ]
     }
   }

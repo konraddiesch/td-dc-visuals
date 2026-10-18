@@ -4,7 +4,8 @@
   "mcp": {
     "chan-tools": {
       "type": "local",
-      "command": ["python3", "/Volumes/Visuals/TouchDesigner/td-dc-visuals/tools/chan_mcp.py"],
+      "command": ["python3", "{env:HOME}/Code/chan-tools/chan_mcp.py"],
+      "cwd": ".",
       "enabled": true
     }
   }

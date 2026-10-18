@@ -14,7 +14,7 @@ Main entrypoint: `digital_carbs_visuals.toe` (loads all .tox components). With T
 | `post/` | `dc_post_adjust.tox` — post-processing |
 | `player/` | `dc_movie_player.tox` + `stateMachine.py` |
 | `components/` | Reusable generic components (song-agnostic) — `point_network_v1.tox` |
-| `visuals/BASE/` | `dc_visuals_base_v5.tox` — template for song visuals |
+| `visuals/BASE/` | `dc_visuals_base_v6.tox` — template for song visuals |
 | `visuals/what_if/` | `dc_what_if_v1.tox` — completed song visual |
 | `visuals/like_a_child/` | `like_a_child_v1.tox` — completed song visual |
 | `visuals/MISC/` | `trippy1.tox`, `trippy2.tox` — utility visuals |
@@ -44,14 +44,23 @@ Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containe
 
 The `touchdesigner` MCP drives the running TD instance (WebServer DAT, port 9981). Generic harness lives in the global opencode config: skill `touchdesigner-mcp`, agent + command `td` — **load the skill before any TD MCP work** (`/td <task>`). Full tool/workflow/persistence rules are in the skill; project-specifics:
 
+⚠️ **Absolute paths below are per-machine.** This repo is worked on from two workstations with different layouts. In the bullets that follow, substitute:
+
+| Placeholder | macOS | Windows + WSL2 |
+|---|---|---|
+| `<TD_MCP_REPO>` | `/Volumes/Visuals/touchdesigner-mcp` | `/mnt/c/Code/touchdesigner-mcp` |
+| `<TD_PROJECT>` | `/Volumes/Visuals/TouchDesigner/td-dc-visuals` | `/mnt/c/Code/td-dc-visuals` |
+
+On Windows, TouchDesigner runs on the **Windows host**, not in WSL — opencode (in WSL2) reaches its WebServer DAT on port 9981 via WSL2 **mirrored networking** (`/etc/wsl.conf` → `[wsl2] networkingMode=mirrored`), so `127.0.0.1:9981` is correct. The host/port must be passed to the MCP server as `--host`/`--port` **arguments**; an `environment` block is silently discarded by the CLI.
+
 - **Right project check**: the top level must show `songs`, `dc_audio_analysis_v2`, `dc_midi_v1` (plus `perform`, `moviefileout1`, `audiodevin1`, `midiin1`, …). If a scratch/default project is open, ask the user to open `digital_carbs_visuals.toe` first.
-- **Harness code**: the TD-side MCP server that TD actually imports is `/Volumes/Visuals/touchdesigner-mcp/modules` (its `import_modules.py` resolves that dir from the tox path). ⚠️ The byte-identical duplicate that used to live at `/Volumes/Visuals/TouchDesigner/touchdesigner-mcp/` was **removed 2026-10-17** — edit only the loaded copy. (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.) Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
-- **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with explicit path `project.save('/Volumes/Visuals/TouchDesigner/td-dc-visuals/digital_carbs_visuals.toe')` — `project.save()` without path writes numbered auto-versions (gitignored).
+- **Harness code**: the TD-side MCP server that TD actually imports is the modules dir inside the `touchdesigner-mcp` repo — `/mnt/c/Code/touchdesigner-mcp/td/modules` on Windows/WSL, `/Volumes/Visuals/touchdesigner-mcp/modules` on macOS (its `import_modules.py` resolves that dir from the tox path). ⚠️ The byte-identical duplicate that used to live at `/Volumes/Visuals/TouchDesigner/touchdesigner-mcp/` was **removed 2026-10-17** — edit only the loaded copy. (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.) Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
+- **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with an explicit path — `project.save('<TD_PROJECT>/digital_carbs_visuals.toe')`, i.e. `/mnt/c/Code/td-dc-visuals/digital_carbs_visuals.toe` on Windows/WSL or `/Volumes/Visuals/TouchDesigner/td-dc-visuals/digital_carbs_visuals.toe` on macOS — `project.save()` without path writes numbered auto-versions (gitignored).
 - **Namespaces**: `touchdesigner_*` (live), `touchdesigner-wiki_*` (docs), `chan-tools_*` (`.chan` data) — never mix.
 
 ## Creating a new song visual
 
-1. Copy the live BASE instance (`songs/template`, sourced from `visuals/BASE/dc_visuals_base_v5.tox`) into a new dir under `visuals/`
+1. Copy the live BASE instance (`songs/template`, sourced from `visuals/BASE/dc_visuals_base_v6.tox`) into a new dir under `visuals/`
 2. Name `<artist>_<song>_v1.tox` (e.g. `dc_what_if_v1.tox`)
 3. Load it into the `songs` COMP in `digital_carbs_visuals.toe`
 4. Add the COMP's name as a row in `songs/registry` — row order defines the `SongNumber` index and `songs/01_start` wires it to `pop_switch`/`top_switch` on `onStart`

@@ -45,9 +45,19 @@ Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containe
 The `touchdesigner` MCP drives the running TD instance (WebServer DAT, port 9981). Generic harness lives in the global opencode config: skill `touchdesigner-mcp`, agent + command `td` — **load the skill before any TD MCP work** (`/td <task>`). Full tool/workflow/persistence rules are in the skill; project-specifics:
 
 - **Right project check**: the top level must show `songs`, `dc_audio_analysis_v2`, `dc_midi_v1` (plus `perform`, `moviefileout1`, `audiodevin1`, `midiin1`, …). If a scratch/default project is open, ask the user to open `digital_carbs_visuals.toe` first.
-- **Harness code**: the TD-side MCP server that TD actually imports is the `modules/` dir of your `touchdesigner-mcp` checkout (by convention a sibling of this repo, e.g. `../touchdesigner-mcp/modules`; its `import_modules.py` resolves that dir from the tox path). ⚠️ The byte-identical duplicate that used to live there was **removed 2026-10-17** — edit only the loaded copy. (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.) Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
+- **Harness code**: the TD-side MCP server that TD actually imports lives in `~/Code/touchdesigner-mcp/td` — the git clone of the fork — so the source you edit *is* the running server. `/mcp_webserver_base.par.externaltox` points directly at `<clone>/td/mcp_webserver_base.tox` and `import_modules.py` derives `<dirname>/modules` from that par. There is **no** separate extract copy any more: the old `~/TouchDesigner/touchdesigner-mcp` (a symlink since 2026-10-18) and `touchdesigner-mcp.extract-v2.1.0` were removed the same day. Runtime-required artifacts are gitignored: `td/modules/td_server/openapi_server/openapi/openapi.yaml` and `**/generated_handlers.py` (`node td/genHandlers.js`). Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner). (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.)
 - **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with an explicit absolute path to this repo's root, `project.save('<repo-root>/digital_carbs_visuals.toe')` — `project.save()` without path writes numbered auto-versions (gitignored).
 - **Namespaces**: `touchdesigner_*` (live), `touchdesigner-wiki_*` (docs), `chan-tools_*` (`.chan` data) — never mix.
+- **Skill source (versioned)**: the skill text is authored in the `konraddiesch/touchdesigner-mcp` fork, branch `local/opencode-harness`, at `plugin/touchdesigner/skills/touchdesigner-mcp/SKILL.md` (clone: `~/Code/touchdesigner-mcp`). `~/.config/opencode/skills/touchdesigner-mcp/SKILL.md` is a **symlink** to it — never edit the global copy. After editing, `npm run plugin:sync` regenerates `plugins/touchdesigner/**` (CI's `plugin:check` compares byte-for-byte, so commit both trees). The same fork also versions the opencode-only harness — `opencode/agents/td.md` and `opencode/commands/td.md` — symlinked to `~/.config/opencode/agent/td.md` and `~/.config/opencode/command/td.md`; they are **not** packaged by `plugin:sync` (opencode frontmatter), and opencode only re-reads agent/command files on restart.
+
+## Review agents (opencode)
+
+Two read-only reviewers, both `mode: all` (Tab-selectable **and** launchable as a subagent), model `openrouter/z-ai/glm-5.3-flash`:
+
+- **`reviewer`** — global, `~/.config/opencode/agents/reviewer.md`. Generic code/diff reviewer. Denies everything, then re-opens `read`/`glob`/`grep` and six read-only git commands (`git diff|log|status|show|blame|ls-files`). No MCP, no network — fully sealed.
+- **`td-reviewer`** — this repo, `.opencode/agents/td-reviewer.md`. Only the delta that `AGENTS.md` does not already say (binaries, no toolchain, empty code surface) plus live-network verification through the read-only TD tools (`touchdesigner_get_*`, `touchdesigner_describe_td_tools`).
+
+Both never edit. `AGENTS.md` reaches subagents automatically, so `td-reviewer` deliberately does **not** restate these conventions — if you change a convention here, do not copy it into the agent prompt.
 
 ## Creating a new song visual
 
@@ -90,6 +100,9 @@ The MCP server `chan_mcp.py` auto-registers `chan_list`, `chan_info`, `chan_anal
 - `.toe` backups (`Backup/`, numbered root versions, `CrashAutoSave*`) are gitignored — only `digital_carbs_visuals.toe` is versioned
 - `Backup/` entries and numbered root `.toe` files come from TD's Increment Filename on Save — not hand-made copies
 - The repo lives on an exFAT volume; macOS creates `._*` AppleDouble files (gitignored) that can break `git gc` — delete them before running gc
+- **Permission `ask` is useless in a subagent** — a backgrounded subagent has no client to prompt, so `ask` behaves like `allow` (verified: a subagent ran `nc`, `curl`, `whoami`, `cat ~/.config/opencode/*` under an `ask` rule). Read-only guarantees need `deny` plus an explicit allowlist, never `ask`
+- **MCP tools are reachable only through Code Mode** — denying the `execute` action removes every MCP tool (a subagent loses `touchdesigner_*` entirely, even with the webserver up on 9981), while allowing it also grants outbound `fetch`. Not separable
+- **Permission action names are `<server>_<tool>`** (underscore, not dot); `*` matches `/` too, so `**` is redundant; a shell pattern ending in `*` also matches the argument-less command (`git status *` covers `git status` and `git status --short`); both `agent/` and `agents/` directories are discovered (glob `{agent,agents}/**/*.md`)
 
 ## Session memory (MemPalace)
 

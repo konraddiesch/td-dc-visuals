@@ -14,6 +14,7 @@ Main entrypoint: `digital_carbs_visuals.toe` (loads all .tox components). With T
 | `post/` | `dc_post_adjust.tox` — post-processing |
 | `player/` | `dc_movie_player.tox` + `stateMachine.py` |
 | `components/` | Reusable generic components (song-agnostic) — `point_network_v1.tox` |
+| `scripts/` | `dc_paths.py` (path module, live-linked to `/config/paths`), `check_paths.py` (repo guard), `td_path_scan.py` (live TD scan) |
 | `visuals/BASE/` | `dc_visuals_base_v6.tox` — template for song visuals |
 | `visuals/what_if/` | `dc_what_if_v1.tox` — completed song visual |
 | `visuals/like_a_child/` | `like_a_child_v1.tox` — completed song visual |
@@ -23,9 +24,11 @@ Main entrypoint: `digital_carbs_visuals.toe` (loads all .tox components). With T
 
 Each module keeps superseded versions in its own `old/` subdirectory (e.g. `led/old/`, `visuals/BASE/old/`).
 
+Start: `./td-dc.sh` — launches TouchDesigner with this project (macOS: `open -a`; WSL2: `cmd.exe` + `wslpath`, TD on the Windows host) and then opencode. The project path is derived from the script's own location; `DC_ABLETON_SET` optionally opens an Ableton set.
+
 ## Live project (running `.toe`)
 
-Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containerCOMP — all song visuals, output switching and DMX), `dc_audio_analysis_v2`, `dc_midi_v1`, plus loose `audiodevin1`, `midiin1`, `speed1`, `switch1`, `null1`, `moviefileout1`, `perform`, `annotate1-3`. The `led/`, `post/`, `player/` `.tox` files exist on disk but are **not** loaded as top-level COMPs — LED/DMX output and song/state playback are integrated inside `songs` (POP-based DMX via `dmxoutPOP`, per-song `led_controls`/`LED`).
+Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containerCOMP — all song visuals, output switching and DMX), `dc_audio_analysis_v2`, `dc_midi_v1`, plus loose `audiodevin1`, `midiin1`, `speed1`, `switch1`, `null1`, `moviefileout1`, `perform`, `annotate1-3`, and `config` (path roots, see below). The `led/`, `post/`, `player/` `.tox` files exist on disk but are **not** loaded as top-level COMPs — LED/DMX output and song/state playback are integrated inside `songs` (POP-based DMX via `dmxoutPOP`, per-song `led_controls`/`LED`).
 
 **Data flow**
 - Audio: device + per-stem `audiodeviceinCHOP`s (SUM / DRUMS / DAN_IN / VOCALS / BASS_IN / WILLY_IN) → `dc_audio_analysis_v2/out1` = 18 channels (`smsd` / `fmsd` / `sc` × bass, drums, dan, willy, sum, voc) → `/songs` input 0.
@@ -40,22 +43,47 @@ Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containe
 
 **Song registry (8, in switch order)**: `like_a_child`, `exploding_whale`, `cocoon`, `just_so_you_know`, `mr_five`, `win_some_lose_some`, `what_if`, `head_in_the_clouds`. Note: `cocoon`, `win_some_lose_some` and `head_in_the_clouds` have **no matching `visuals/` dir or `.tox`** — they live only inside the `.toe` (`head_in_the_clouds`'s WIP dir is `visuals/hitc/`).
 
+## Paths in the TD project (OS-agnostic)
+
+Nothing in the `.toe` hardcodes a media or TD-install path. Verified live 2026-10-19 with `scripts/td_path_scan.py`: **`hardcoded_files=0`, 53 expression-resolved, 70 OSC/node strings (ok), 325 dangling `parent.Project.*` binds** (those are a control problem, not a path problem — see Gotchas).
+
+**Mechanism** — one baseCOMP `/config` (custom pars `Mediaroot`, `Lutroot`, `Vst3root`, `Neutonevst`, `Diagnostics`) plus `/config/paths`, a Text DAT with **Sync File → `scripts/dc_paths.py`** (relative to the `.toe`), loaded as a module and used as `mod('/config/paths')`.
+
+- Media root resolution: `DC_MEDIA_ROOT` env var → `/Volumes/Visuals` (macOS) → `D:/` (Windows); the first candidate containing `<root>/Library/Recordings` wins. One root covers `Library/Recordings`, `Library/Videos`, `Library/LUTs` and `Live/`.
+- Optional overrides: `DC_LUT_ROOT`, `DC_VST3_ROOT`, `DC_TD_SAMPLES`, `DC_ABLETON_SET`.
+- Helpers: `media()`, `lut()`, `samples()`, `install()`, `vst3()`, `ableton_set()`, `ocio_config()`, `report()`, `check()` — e.g. `mod('/config/paths').samples('Map/Banana.tif')`.
+- Because the DAT is sync-linked, editing `scripts/dc_paths.py` changes TD behaviour immediately; the `.py` is the source of truth, not the DAT.
+
+**Rules for new nodes**
+- Never type an absolute path into a par. Use an expression: `mod('/config/paths').<helper>('relative/part')`.
+- `os` is **not** available in parameter expressions — put any logic in `scripts/dc_paths.py` and call it via `mod()`.
+- Song COMPs keep `par.File` / `par.Filesource` as **relative** constants (`Library/Recordings/Müll/müll_karo_3.mov`); internal nodes read them via `parent().par.File` / `parent().par.Filesource`. Never re-type the path in a child node.
+- `externaltox` of a loaded component is relative to the `.toe` (e.g. `./audio_analysis/dc_audio_analysis_v2.tox`).
+- macOS stores paths NFD, Windows NFC — `dc_paths` normalizes to NFC, so write names as you see them.
+- Supposed to stay constant: OSC address patterns (`/listener/song/...`), scope patterns with `*`, node paths (`/project1/`), `/config`'s own root candidates, and `mcp_webserver_base` (never touch it).
+
+**Checks** (both read-only)
+- Repo text: `python3 scripts/check_paths.py` — absolute paths in versioned code/config fail (exit 1), in `.md` they only warn. Intentional exceptions get the per-line marker `os-path-ok`.
+- Live project: `exec(open(project.folder + '/scripts/td_path_scan.py').read())` via the TD MCP / Textport → writes `Backup/td_path_scan_report.txt`. Expected: `hardcoded_files=0`.
+
 ## TouchDesigner MCP (live session)
 
 The `touchdesigner` MCP drives the running TD instance (WebServer DAT, port 9981). Generic harness lives in the global opencode config: skill `touchdesigner-mcp`, agent + command `td` — **load the skill before any TD MCP work** (`/td <task>`). Full tool/workflow/persistence rules are in the skill; project-specifics:
 
-⚠️ **Absolute paths below are per-machine.** This repo is worked on from two workstations with different layouts. In the bullets that follow, substitute:
+⚠️ **Two workstations, one repo layout.** Everything *inside* the repo is identical on both machines — only the parent directories differ, and they matter only for shell/git/MCP work:
 
 | Placeholder | macOS | Windows + WSL2 |
 |---|---|---|
-| `<TD_MCP_REPO>` | `/Volumes/Visuals/touchdesigner-mcp` | `/mnt/c/Code/touchdesigner-mcp` |
 | `<TD_PROJECT>` | `/Volumes/Visuals/TouchDesigner/td-dc-visuals` | `/mnt/c/Code/td-dc-visuals` |
+| `<TD_MCP_REPO>` | `/Volumes/Visuals/touchdesigner-mcp` | `/mnt/c/Code/touchdesigner-mcp` |
+
+These are **shell-side** paths. Inside TouchDesigner nothing is machine-specific (see *Paths in the TD project*), and `td-dc.sh` derives the project path from its own location — so neither code nor nodes should ever contain one of these. `scripts/check_paths.py` enforces that for versioned files.
 
 On Windows, TouchDesigner runs on the **Windows host**, not in WSL — opencode (in WSL2) reaches its WebServer DAT on port 9981 via WSL2 **mirrored networking** (`/etc/wsl.conf` → `[wsl2] networkingMode=mirrored`), so `127.0.0.1:9981` is correct. The host/port must be passed to the MCP server as `--host`/`--port` **arguments**; an `environment` block is silently discarded by the CLI.
 
-- **Right project check**: the top level must show `songs`, `dc_audio_analysis_v2`, `dc_midi_v1` (plus `perform`, `moviefileout1`, `audiodevin1`, `midiin1`, …). If a scratch/default project is open, ask the user to open `digital_carbs_visuals.toe` first.
-- **Harness code**: the TD-side MCP server that TD actually imports is the modules dir inside the `touchdesigner-mcp` repo — `/mnt/c/Code/touchdesigner-mcp/td/modules` on Windows/WSL, `/Volumes/Visuals/touchdesigner-mcp/modules` on macOS (its `import_modules.py` resolves that dir from the tox path). ⚠️ The byte-identical duplicate that used to live at `/Volumes/Visuals/TouchDesigner/touchdesigner-mcp/` was **removed 2026-10-17** — edit only the loaded copy. (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.) Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
-- **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with an explicit path — `project.save('<TD_PROJECT>/digital_carbs_visuals.toe')`, i.e. `/mnt/c/Code/td-dc-visuals/digital_carbs_visuals.toe` on Windows/WSL or `/Volumes/Visuals/TouchDesigner/td-dc-visuals/digital_carbs_visuals.toe` on macOS — `project.save()` without path writes numbered auto-versions (gitignored).
+- **Right project check**: the top level must show `songs`, `dc_audio_analysis_v2`, `dc_midi_v1` (plus `config`, `perform`, `moviefileout1`, `audiodevin1`, `midiin1`, …). If a scratch/default project is open, ask the user to open `digital_carbs_visuals.toe` first. Note: in this project the top level is `/` (not `/project1`).
+- **Harness code**: the TD-side MCP server that TD actually imports is the modules dir inside the `touchdesigner-mcp` repo — `<TD_MCP_REPO>/td/modules` on Windows/WSL, `<TD_MCP_REPO>/modules` on macOS (its `import_modules.py` resolves that dir from the tox path, so it is not hardcoded). Edit only the loaded copy, never a duplicate. Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
+- **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with an explicit path — `project.save(project.folder + '/digital_carbs_visuals.toe')` (OS-neutral, no machine path needed). `project.save()` without a path writes numbered auto-versions (gitignored).
 - **Namespaces**: `touchdesigner_*` (live), `touchdesigner-wiki_*` (docs), `chan-tools_*` (`.chan` data) — never mix.
 
 ## Creating a new song visual
@@ -64,7 +92,8 @@ On Windows, TouchDesigner runs on the **Windows host**, not in WSL — opencode 
 2. Name `<artist>_<song>_v1.tox` (e.g. `dc_what_if_v1.tox`)
 3. Load it into the `songs` COMP in `digital_carbs_visuals.toe`
 4. Add the COMP's name as a row in `songs/registry` — row order defines the `SongNumber` index and `songs/01_start` wires it to `pop_switch`/`top_switch` on `onStart`
-5. After editing any .tox, re-save the main .toe to update references
+5. Keep the song's `File` / `Filesource` pars **relative** (`Library/Recordings/<artist>/<clip>.mov`) — see *Paths in the TD project*; internal nodes read them, never re-type the path
+6. After editing any .tox, re-save the main .toe to update references
 
 ## Reusable components (`components/`)
 
@@ -76,7 +105,7 @@ Song-agnostic components live in `components/` as `.tox` files. The house patter
 
 **`point_network_v1.tox`** — POP-only "point cloud → instanced boxes": `in1` (inPOP source) → `rnd_scale` → `rnd_rotation` → `noise` → `life_fade` → `copy_boxes` (template `box`) → `out1` (outPOP). 24 custom pars on the "Point Network" page (random scale/rotation, noise type/size/harmon/parsize/seed/period/spread/gain/amp/exp/speed, fade enable/in/out/scale/color, box scale/offset). `Fadeenable` toggles `life_fade.bypass` (`1 - parent().par.Fadeenable`), so the particle-age fade is optional and its `PartAge`/`PartLifeSpan` errors are suppressed when off. Unifies the two former inline variants (fade / no-fade).
 
-⚠️ The original inline point networks in `visuals_network` are bound (`ParMode.BIND`) to a `Project` COMP that does **not** exist in `what_if` or `template` — every meaningful par (`box.scale`, all `noise.*`, `life_fade.vec0/1value`, the `copy_boxes` transform block) points at `parent.Project.par.*` (Scale, Seed, Period, Gain, Amp, Exp, T4d, Fadein, Fadeout, Ncy, Tx/Ty/Tz, Rx/Ry/Rz, Sx/Sy/Sz, Px/Py/Pz, …). Those binds are dangling; the component internalizes the controls instead.
+⚠️ The original inline point networks in `visuals_network` are bound (`ParMode.BIND`, 325 dangling binds project-wide) to a `Project` COMP that does **not** exist in `what_if` or `template` — every meaningful par (`box.scale`, all `noise.*`, `life_fade.vec0/1value`, the `copy_boxes` transform block) points at `parent.Project.par.*` (Scale, Seed, Period, Gain, Amp, Exp, T4d, Fadein, Fadeout, Ncy, Tx/Ty/Tz, Rx/Ry/Rz, Sx/Sy/Sz, Px/Py/Pz, …). Those binds are dangling; the component internalizes the controls instead.
 
 ## `.chan` files (performance recordings)
 
@@ -84,23 +113,27 @@ Recorded at 60 fps, space-separated floats, one row per frame. Comment lines sta
 
 ## Python tools (`chan-tools`)
 
-The `.chan` tooling is **not** part of this repo — it lives in the standalone,
-project-agnostic repo `$HOME/Code/chan-tools` (`/mnt/c/Code/chan-tools` on this
-machine, `/Volumes/Visuals/TouchDesigner`-independent). The MCP server resolves
-the data root from `CHAN_PROJECT_ROOT`, else the process cwd (the workspace),
-and always finds its helper scripts next to itself.
+The `.chan` tooling is **not** part of this repo — it lives in its own
+project-agnostic repo. The MCP command finds it through a fallback chain
+(`<workspace>/../chan-tools`, then `$HOME/Code/chan-tools`), so nothing is
+hardcoded, and the helper scripts always sit next to the server. The MCP server
+resolves the data root from `CHAN_PROJECT_ROOT`, else the process cwd (the
+workspace).
 
 Dependencies: `numpy`, `matplotlib` (`chan-tools/requirements.txt`). The server
 is stdlib-only and falls back to `uv run --with numpy --with matplotlib` when
 the interpreter lacks them.
 
-- `python3 "$HOME/Code/chan-tools/chan_stats.py" <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
-- `python3 "$HOME/Code/chan-tools/plot_chan.py" <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
+- `chan_stats.py <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
+- `plot_chan.py <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
 
 MCP server `chan-tools` registers `chan_list`, `chan_info`, `chan_analyze`,
 `chan_plot`. In opencode it comes from the **global** config
 (`~/.config/opencode/opencode.jsonc`), so this project's `opencode.json` must
-not declare a competing `chan-tools` entry. Path resolution: absolute → project
+not declare a competing `chan-tools` entry. That config is per machine (it lives
+in `$HOME`, not in any repo); its commands resolve `$HOME/Code/<repo>` first and
+fall back to the machine's own absolute location, so the same file works on
+macOS and WSL. Path resolution: absolute → project
 root → `visuals/<path>` → bare filename anywhere in the project.
 
 ## Gotchas
@@ -109,6 +142,11 @@ root → `visuals/<path>` → bare filename anywhere in the project.
 - `.toe` backups (`Backup/`, numbered root versions, `CrashAutoSave*`) are gitignored — only `digital_carbs_visuals.toe` is versioned
 - `Backup/` entries and numbered root `.toe` files come from TD's Increment Filename on Save — not hand-made copies
 - The repo lives on an exFAT volume; macOS creates `._*` AppleDouble files (gitignored) that can break `git gc` — delete them before running gc
+- Re-run `scripts/td_path_scan.py` after touching nodes that load files; "0 hardcoded" was verified 2026-10-19, not a permanent property
+- **325 dangling `parent.Project.*` binds over 97 nodes** are a *control* problem, not a path problem: no `Project` COMP exists (in `what_if`/`template` and most others). They are why the old file paths had frozen as constants — every node kept its own hardcoded copy, so one node could point at macOS media while its sibling pointed at Windows media. Fix them node by node; new components internalize the controls instead
+- `/dc_midi_v1/tdAbletonPackage/tdAbleton` has an `externaltox` whose file does not exist in the repo. The expression resolves relative to the `.toe`, so it is *portable* — the file is simply absent (the TDAbleton packages live embedded in `/dc_midi_v1/tdAbletonPackage`). Leave the ref alone
+- 6 `audiovst` nodes in `dc_audio_analysis_v2` have an empty `file` par: the `neutone` VST3 is installed on neither machine → 6 persistent red errors, deliberate
+- 1 stale par: `/songs/just_so_you_know/visuals_network/ocio1` `filesource` is in EXPRESSION mode with the correct expression but a stale empty value (the only node of 9). Re-assigning the expression evaluates it — but that activates `The One LUT` for that song, i.e. it changes the look; documented, not fixed
 
 ## Session memory (MemPalace)
 

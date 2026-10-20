@@ -13,8 +13,9 @@ Bewertung:
   OTHER     -> absolute Strings, die keine Dateipfade sind: OSC-Adressen
                (/song/MIDI_JOJO/...), Muster mit '*' und Node-Pfade (/project1/).
                Die bleiben bewusst Konstanten - kein Verstoss.
-  BIND      -> haengender BIND auf parent.Project.par.* (bekanntes Steuerungsproblem,
-               separat zu behandeln).
+  BIND      -> wird ueber par.bindMaster geprueft, NICHT ueber den bindExpr-Text.
+               intakt = Kontrollbus via Parent Shortcut (parent.Project.*,
+               parent.Annotate.*); kaputt = der Master existiert nicht mehr.
 
 Schreibt den Bericht nach <projekt>/Backup/td_path_scan_report.txt.
 """
@@ -49,7 +50,9 @@ def is_file_path(value):
 hardcoded = []
 resolved = []
 other = []
-binds = []
+binds_ok = 0
+binds_broken = []
+shortcut_binds = 0
 
 for node in op('/').findChildren():          # noqa: F821  (TD-Global)
     if any(node.path.startswith(s) for s in SKIP_NODES):
@@ -59,8 +62,18 @@ for node in op('/').findChildren():          # noqa: F821  (TD-Global)
     except Exception:
         continue
     for par in pars:
-        if par.mode.name == 'BIND' and 'Project' in str(par.bindExpr or ''):
-            binds.append(node.path + ' | ' + par.name + ' | ' + str(par.bindExpr))
+        if par.mode.name == 'BIND' and str(par.bindExpr or ''):
+            # Der bindExpr-Text ist nur die Beschriftung (bei diesem Projekt:
+            # "parent.Project.par.X" - "Project" ist der Parent Shortcut des
+            # COMPs, kein Op). Die Verdrahtung steckt in bindMaster.
+            try:
+                par.bindMaster
+                binds_ok += 1
+                if 'Project' in str(par.bindExpr):
+                    shortcut_binds += 1
+            except Exception as exc:
+                binds_broken.append(node.path + ' | ' + par.name + ' | '
+                                    + str(par.bindExpr) + ' | ' + str(exc)[:80])
             continue
         try:
             value = par.eval()
@@ -79,13 +92,16 @@ for node in op('/').findChildren():          # noqa: F821  (TD-Global)
 
 lines = ['# TD-Pfad-Scan - ' + str(len(hardcoded)) + ' hardcoded Datei-Pfade, '
          + str(len(resolved)) + ' resolved (EXPRESSION), '
-         + str(len(binds)) + ' dangling Project-Binds, '
-         + str(len(other)) + ' OSC/Node-Pfade (ok)', '',
+         + str(len(binds_broken)) + ' broken Binds, '
+         + str(len(other)) + ' OSC/Node-Pfade (ok)',
+         '# Binds intakt: ' + str(binds_ok) + ' (davon ' + str(shortcut_binds)
+         + ' via Parent Shortcut "Project")', '',
          '## HARDCODED Datei-Pfade (Modus CONSTANT - muss weg)']
 lines += sorted(hardcoded) or ['(keine)']
 lines += ['', '## RESOLVED (Modus EXPRESSION - Ergebnis, ok)'] + sorted(resolved)
 lines += ['', '## OTHER - OSC-Adressen / Node-Pfade (Modus CONSTANT - ok)'] + sorted(other)
-lines += ['', '## DANGLING BINDS parent.Project.*'] + sorted(binds)
+lines += ['', '## BROKEN BINDS (bindMaster nicht aufloesbar - muss weg)'] + (
+    sorted(binds_broken) or ['(keine)'])
 
 out_dir = os.path.join(project.folder, REPORT_DIR)   # noqa: F821  (TD-Global)
 try:
@@ -97,5 +113,7 @@ io.open(os.path.join(out_dir, REPORT_NAME), 'w', encoding='utf-8').write(
 print('hardcoded_files=' + str(len(hardcoded))
       + ' resolved=' + str(len(resolved))
       + ' other=' + str(len(other))
-      + ' binds=' + str(len(binds))
+      + ' binds_ok=' + str(binds_ok)
+      + ' (shortcut=' + str(shortcut_binds) + ')'
+      + ' broken_binds=' + str(len(binds_broken))
       + ' -> ' + REPORT_DIR + '/' + REPORT_NAME)

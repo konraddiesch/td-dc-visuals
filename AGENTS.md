@@ -45,7 +45,7 @@ Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containe
 
 ## Paths in the TD project (OS-agnostic)
 
-Nothing in the `.toe` hardcodes a media or TD-install path. Verified live 2026-10-19 with `scripts/td_path_scan.py`: **`hardcoded_files=0`, 53 expression-resolved, 70 OSC/node strings (ok), 325 dangling `parent.Project.*` binds** (those are a control problem, not a path problem — see Gotchas).
+Nothing in the `.toe` hardcodes a media or TD-install path. Verified live 2026-10-20 with `scripts/td_path_scan.py`: **`hardcoded_files=0`, 52 expression-resolved, 47 OSC/node strings (ok), 1922 intact binds, 0 broken binds** (see *Parameter control bus*).
 
 **Mechanism** — one baseCOMP `/config` (custom pars `Mediaroot`, `Lutroot`, `Vst3root`, `Neutonevst`, `Diagnostics`) plus `/config/paths`, a Text DAT with **Sync File → `scripts/dc_paths.py`** (relative to the `.toe`), loaded as a module and used as `mod('/config/paths')`.
 
@@ -95,6 +95,15 @@ On Windows, TouchDesigner runs on the **Windows host**, not in WSL — opencode 
 5. Keep the song's `File` / `Filesource` pars **relative** (`Library/Recordings/<artist>/<clip>.mov`) — see *Paths in the TD project*; internal nodes read them, never re-type the path
 6. After editing any .tox, re-save the main .toe to update references
 
+## Parameter control bus (parent shortcuts)
+
+The song visuals are driven by **Parent Shortcuts** (`par.parentshortcut`), not by a global control COMP. `visuals_network` in all 8 songs (and `HITC_v1`) sets it to `Project`; every `annotate*` COMP sets `Annotate`. Inside a COMP, `parent.<Shortcut>` resolves to that COMP itself — independent of its name, path, or which `.tox` it was loaded from.
+
+- `visuals_network` is the control surface: 66 custom pars (`Type`, `Seed`, `Period`, `Gain`, `Tx…Pz`, `Sx…Sz`, `Scale`, `Filesource`, …). 325 child pars mirror them with `ParMode.BIND` — verified 2026-10-20: 325/325 masters resolve.
+- This is why there is **no** global `Project` COMP and none is missing: each song's network is "Project" for its own children, so the same network copy works in every song.
+- ⚠️ **Never rename or clear a shortcut** (`par.parentshortcut`): it invalidates every bind of that COMP at once (325 for `Project`, 700+ for `Annotate`). Rename the COMP, not the shortcut.
+- To inspect a bind, read `par.bindMaster` (the real wiring). `par.bindExpr` is only the label from creation time — `parent.Project.par.X` is correct and does **not** point at a node called `Project`. Never classify binds by that text.
+
 ## Reusable components (`components/`)
 
 Song-agnostic components live in `components/` as `.tox` files. The house pattern (same as the inline `flow_network` / `vignette_v1` baseCOMPs inside a song's `visuals_network`):
@@ -105,7 +114,7 @@ Song-agnostic components live in `components/` as `.tox` files. The house patter
 
 **`point_network_v1.tox`** — POP-only "point cloud → instanced boxes": `in1` (inPOP source) → `rnd_scale` → `rnd_rotation` → `noise` → `life_fade` → `copy_boxes` (template `box`) → `out1` (outPOP). 24 custom pars on the "Point Network" page (random scale/rotation, noise type/size/harmon/parsize/seed/period/spread/gain/amp/exp/speed, fade enable/in/out/scale/color, box scale/offset). `Fadeenable` toggles `life_fade.bypass` (`1 - parent().par.Fadeenable`), so the particle-age fade is optional and its `PartAge`/`PartLifeSpan` errors are suppressed when off. Unifies the two former inline variants (fade / no-fade).
 
-⚠️ The original inline point networks in `visuals_network` are bound (`ParMode.BIND`, 325 dangling binds project-wide) to a `Project` COMP that does **not** exist in `what_if` or `template` — every meaningful par (`box.scale`, all `noise.*`, `life_fade.vec0/1value`, the `copy_boxes` transform block) points at `parent.Project.par.*` (Scale, Seed, Period, Gain, Amp, Exp, T4d, Fadein, Fadeout, Ncy, Tx/Ty/Tz, Rx/Ry/Rz, Sx/Sy/Sz, Px/Py/Pz, …). Those binds are dangling; the component internalizes the controls instead.
+⚠️ The original inline point networks in `visuals_network` are bound (`ParMode.BIND`) to `parent.Project.par.*` — `Project` is the **parent shortcut** of the enclosing `visuals_network`, not a missing node (see *Parameter control bus*). Every meaningful par (`box.scale`, all `noise.*`, `life_fade.vec0/1value`, the `copy_boxes` transform block) mirrors the control surface of its own song. Those binds are intact; standalone components like `point_network_v1` carry their own custom pars instead of relying on an enclosing shortcut.
 
 ## `.chan` files (performance recordings)
 
@@ -142,8 +151,9 @@ root → `visuals/<path>` → bare filename anywhere in the project.
 - `.toe` backups (`Backup/`, numbered root versions, `CrashAutoSave*`) are gitignored — only `digital_carbs_visuals.toe` is versioned
 - `Backup/` entries and numbered root `.toe` files come from TD's Increment Filename on Save — not hand-made copies
 - The repo lives on an exFAT volume; macOS creates `._*` AppleDouble files (gitignored) that can break `git gc` — delete them before running gc
-- Re-run `scripts/td_path_scan.py` after touching nodes that load files; "0 hardcoded" was verified 2026-10-19, not a permanent property
-- **325 dangling `parent.Project.*` binds over 97 nodes** are a *control* problem, not a path problem: no `Project` COMP exists (in `what_if`/`template` and most others). They are why the old file paths had frozen as constants — every node kept its own hardcoded copy, so one node could point at macOS media while its sibling pointed at Windows media. Fix them node by node; new components internalize the controls instead
+- Re-run `scripts/td_path_scan.py` after touching nodes that load files (repo-side equivalent: `scripts/check_paths.py`); "0 hardcoded" was verified 2026-10-20, not a permanent property
+- Don't confuse the two "Project"s: `parent.Project` is the **parent shortcut** of the enclosing `visuals_network` (see *Parameter control bus*), while `op('/config')` is the path-root COMP. Neither indicates a missing node. The old file paths froze as *constants typed per machine* — not because of these binds
+- To check binds, use `par.bindMaster`, not `par.bindExpr`: the label `parent.Project.par.*` is correct and resolves inside the COMP (verified 325/325), even though `op('…/Project')` legitimately returns `None`. Re-assigning `par.expr` on such a par converts BIND → EXPRESSION and can break it
 - `/dc_midi_v1/tdAbletonPackage/tdAbleton` has an `externaltox` whose file does not exist in the repo. The expression resolves relative to the `.toe`, so it is *portable* — the file is simply absent (the TDAbleton packages live embedded in `/dc_midi_v1/tdAbletonPackage`). Leave the ref alone
 - 6 `audiovst` nodes in `dc_audio_analysis_v2` have an empty `file` par: the `neutone` VST3 is installed on neither machine → 6 persistent red errors, deliberate
 - 1 stale par: `/songs/just_so_you_know/visuals_network/ocio1` `filesource` is in EXPRESSION mode with the correct expression but a stale empty value (the only node of 9). Re-assigning the expression evaluates it — but that activates `The One LUT` for that song, i.e. it changes the look; documented, not fixed

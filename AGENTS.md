@@ -82,9 +82,19 @@ These are **shell-side** paths. Inside TouchDesigner nothing is machine-specific
 On Windows, TouchDesigner runs on the **Windows host**, not in WSL — opencode (in WSL2) reaches its WebServer DAT on port 9981 via WSL2 **mirrored networking** (`/etc/wsl.conf` → `[wsl2] networkingMode=mirrored`), so `127.0.0.1:9981` is correct. The host/port must be passed to the MCP server as `--host`/`--port` **arguments**; an `environment` block is silently discarded by the CLI.
 
 - **Right project check**: the top level must show `songs`, `dc_audio_analysis_v2`, `dc_midi_v1` (plus `config`, `perform`, `moviefileout1`, `audiodevin1`, `midiin1`, …). If a scratch/default project is open, ask the user to open `digital_carbs_visuals.toe` first. Note: in this project the top level is `/` (not `/project1`).
-- **Harness code**: the TD-side MCP server that TD actually imports is the modules dir inside the `touchdesigner-mcp` repo — `<TD_MCP_REPO>/td/modules` on Windows/WSL, `<TD_MCP_REPO>/modules` on macOS (its `import_modules.py` resolves that dir from the tox path, so it is not hardcoded). Edit only the loaded copy, never a duplicate. Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner).
+- **Harness code**: the TD-side MCP server that TD actually imports is the git clone of the fork — `<TD_MCP_REPO>/td` (on macOS `~/Code/touchdesigner-mcp/td`) — so the source you edit *is* the running server. `/mcp_webserver_base.par.externaltox` points directly at `<clone>/td/mcp_webserver_base.tox` and `import_modules.py` derives `<dirname>/modules` (i.e. `td/modules`) from that par, so nothing is hardcoded. Edit only the loaded copy, never a duplicate: the old separate extract copy (`~/TouchDesigner/touchdesigner-mcp`, a symlink since 2026-10-18) and `touchdesigner-mcp.extract-v2.1.0` were removed. Runtime-required artifacts are gitignored: `td/modules/td_server/openapi_server/openapi/openapi.yaml` and `**/generated_handlers.py` (`node td/genHandlers.js`). Module edits do **not** take effect from a webserver `restart` pulse; you must re-import Python (clear `sys.modules` for `mcp`/`utils` and re-exec `/mcp_webserver_base/mcp_webserver_script`, or restart TouchDesigner). (An unrelated copy of just the `.tox` component lives in the `touchdesigner-wiki-mcp` project.)
 - **Persistence**: save components as `.tox` under their module dir; re-save the main `.toe` with an explicit path — `project.save(project.folder + '/digital_carbs_visuals.toe')` (OS-neutral, no machine path needed). `project.save()` without a path writes numbered auto-versions (gitignored).
 - **Namespaces**: `touchdesigner_*` (live), `touchdesigner-wiki_*` (docs), `chan-tools_*` (`.chan` data) — never mix.
+- **Skill source (versioned)**: the skill text is authored in the `konraddiesch/touchdesigner-mcp` fork, branch `local/opencode-harness`, at `plugin/touchdesigner/skills/touchdesigner-mcp/SKILL.md` (clone: `~/Code/touchdesigner-mcp`). `~/.config/opencode/skills/touchdesigner-mcp/SKILL.md` is a **symlink** to it — never edit the global copy. After editing, `npm run plugin:sync` regenerates `plugins/touchdesigner/**` (CI's `plugin:check` compares byte-for-byte, so commit both trees). The same fork also versions the opencode-only harness — `opencode/agents/td.md` and `opencode/commands/td.md` — symlinked to `~/.config/opencode/agent/td.md` and `~/.config/opencode/command/td.md`; they are **not** packaged by `plugin:sync` (opencode frontmatter), and opencode only re-reads agent/command files on restart.
+
+## Review agents (opencode)
+
+Two read-only reviewers, both `mode: all` (Tab-selectable **and** launchable as a subagent), model `openrouter/z-ai/glm-5.3-flash`:
+
+- **`reviewer`** — global, `~/.config/opencode/agents/reviewer.md`. Generic code/diff reviewer. Denies everything, then re-opens `read`/`glob`/`grep` and six read-only git commands (`git diff|log|status|show|blame|ls-files`). No MCP, no network — fully sealed.
+- **`td-reviewer`** — this repo, `.opencode/agents/td-reviewer.md`. Only the delta that `AGENTS.md` does not already say (binaries, no toolchain, empty code surface) plus live-network verification through the read-only TD tools (`touchdesigner_get_*`, `touchdesigner_describe_td_tools`).
+
+Both never edit. `AGENTS.md` reaches subagents automatically, so `td-reviewer` deliberately does **not** restate these conventions — if you change a convention here, do not copy it into the agent prompt.
 
 ## Creating a new song visual
 
@@ -120,30 +130,26 @@ Song-agnostic components live in `components/` as `.tox` files. The house patter
 
 Recorded at 60 fps, space-separated floats, one row per frame. Comment lines start with `#`. Header lists channel names (e.g. `smsd_bass fmsd_bass sc_bass smsd_drums`). Stored under `data/<song>/<YYYYMMDD_ort>/`.
 
-## Python tools (`chan-tools`)
+## `.chan` tools (external)
 
-The `.chan` tooling is **not** part of this repo — it lives in its own
-project-agnostic repo. The MCP command finds it through a fallback chain
-(`<workspace>/../chan-tools`, then `$HOME/Code/chan-tools`), so nothing is
-hardcoded, and the helper scripts always sit next to the server. The MCP server
-resolves the data root from `CHAN_PROJECT_ROOT`, else the process cwd (the
-workspace).
+The `.chan` analysis tooling lives in its own repo — **`chan-tools`** (sibling convention: `<workspace>/../chan-tools`, i.e. `~/Code/chan-tools` on macOS, `/mnt/c/Code/chan-tools` in WSL) — not in this project. This repo only *references* it; credentials-free, project-agnostic. Keep the separation: don't re-vendor the scripts here.
+
+Both MCP harnesses resolve the server through the same fallback chain — `$HOME/Code/chan-tools` first, then `<workspace>/../chan-tools` — so nothing is hardcoded and the helper scripts always sit next to the server. The server resolves the *data* root from `CHAN_PROJECT_ROOT`, else the process cwd (the MCP host spawns it in the project workspace).
 
 Dependencies: `numpy`, `matplotlib` (`chan-tools/requirements.txt`). The server
 is stdlib-only and falls back to `uv run --with numpy --with matplotlib` when
 the interpreter lacks them.
 
-- `chan_stats.py <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
-- `plot_chan.py <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
+- `python3 ~/Code/chan-tools/chan_stats.py <file.chan>` — per-channel stats. Flags: `--channel`, `--peak-distance`
+- `python3 ~/Code/chan-tools/plot_chan.py <file.chan>` — plot channel data. Flags: `--channels`, `--output`, `--summary`, `--window`
 
-MCP server `chan-tools` registers `chan_list`, `chan_info`, `chan_analyze`,
-`chan_plot`. In opencode it comes from the **global** config
-(`~/.config/opencode/opencode.jsonc`), so this project's `opencode.json` must
-not declare a competing `chan-tools` entry. That config is per machine (it lives
-in `$HOME`, not in any repo); its commands resolve `$HOME/Code/<repo>` first and
-fall back to the machine's own absolute location, so the same file works on
-macOS and WSL. Path resolution: absolute → project
-root → `visuals/<path>` → bare filename anywhere in the project.
+The MCP server `chan_mcp.py` auto-registers `chan_list`, `chan_info`,
+`chan_analyze`, `chan_plot`. A global opencode skill `chan-tools` documents the
+workflow — load it before any `.chan` MCP work. Wired in both harnesses via the
+same `bash -lc` fallback loop: `opencode.json` (project entry, which overrides
+the global `~/.config/opencode/opencode.jsonc`) and `.claude/settings.json`.
+Path resolution: absolute → project root → `visuals/<path>` → bare filename
+anywhere in the project.
 
 ## Gotchas
 
@@ -157,10 +163,21 @@ root → `visuals/<path>` → bare filename anywhere in the project.
 - `/dc_midi_v1/tdAbletonPackage/tdAbleton` has an `externaltox` whose file does not exist in the repo. The expression resolves relative to the `.toe`, so it is *portable* — the file is simply absent (the TDAbleton packages live embedded in `/dc_midi_v1/tdAbletonPackage`). Leave the ref alone
 - 6 `audiovst` nodes in `dc_audio_analysis_v2` have an empty `file` par: the `neutone` VST3 is installed on neither machine → 6 persistent red errors, deliberate
 - 1 stale par: `/songs/just_so_you_know/visuals_network/ocio1` `filesource` is in EXPRESSION mode with the correct expression but a stale empty value (the only node of 9). Re-assigning the expression evaluates it — but that activates `The One LUT` for that song, i.e. it changes the look; documented, not fixed
+- **Permission `ask` is useless in a subagent** — a backgrounded subagent has no client to prompt, so `ask` behaves like `allow` (verified: a subagent ran `nc`, `curl`, `whoami`, `cat ~/.config/opencode/*` under an `ask` rule). Read-only guarantees need `deny` plus an explicit allowlist, never `ask`
+- **MCP tools are reachable only through Code Mode** — denying the `execute` action removes every MCP tool (a subagent loses `touchdesigner_*` entirely, even with the webserver up on 9981), while allowing it also grants outbound `fetch`. Not separable
+- **Permission action names are `<server>_<tool>`** (underscore, not dot); `*` matches `/` too, so `**` is redundant; a shell pattern ending in `*` also matches the argument-less command (`git status *` covers `git status` and `git status --short`); both `agent/` and `agents/` directories are discovered (glob `{agent,agents}/**/*.md`)
 
 ## Session memory (MemPalace)
 
-At the end of every session, automatically save a checkpoint to MemPalace so conversations persist across sessions:
+**Session start (read) — do this before answering, not on request:**
+
+- Call `mempalace_status` once to load the palace overview + AAAK spec.
+- Call `mempalace_diary_read` (`agent_name: opencode`, `last_n: 3-5`) for recent agent continuity.
+- Before any statement about a past decision, a past session, or a file/commit history, verify with a **narrow** `mempalace_search` (small `limit`, relevant scope) — never guess. Widen only if recall is insufficient.
+
+Shell access alone is not enough: the palace often holds the *why* behind repo state.
+
+**Session end (write) — automatic:**
 
 - Call `mempalace_checkpoint` with the session's key decisions/outcomes as `items` (wing `td_dc_visuals`, room `decisions`), plus a `diary` entry (agent `opencode`, AAAK format).
 - Do this without being asked — it is the default behavior.

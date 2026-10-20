@@ -7,9 +7,10 @@
 # keinen fest verdrahteten Projektpfad. Pro Maschine ueberschreibbar:
 #
 #   TD_APP         macOS: Pfad zur TouchDesigner.app
-#   ABLETON_APP    macOS: Name/Pfad der Ableton-App
+#   ABLETON_APP    macOS: Name/Pfad der Ableton-App (Alias: AL_APP)
 #   TD_EXE         WSL:   Pfad zur TouchDesigner.exe
 #   DC_ABLETON_SET Pfad zum Ableton-Set (.als); leer = kein Set oeffnen
+#                  (Alias: AL_FILE)
 #
 # App-Pfade sind OS-Konventionen (nicht maschinenspezifisch) und mit
 # "os-path-ok" markiert, damit scripts/check_paths.py sie toleriert.
@@ -17,7 +18,7 @@ set -euo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TOE="$REPO_DIR/digital_carbs_visuals.toe"
-ALS="${DC_ABLETON_SET:-}"
+ALS="${DC_ABLETON_SET:-${AL_FILE:-}}"
 
 if [ ! -f "$TOE" ]; then
   echo "Projekt nicht gefunden: $TOE" >&2
@@ -32,7 +33,7 @@ case "$(uname -s)" in
     fi
     open -a "${TD_APP:-/Applications/TouchDesigner.app}" "$TOE"  # os-path-ok
     if [ -n "$ALS" ] && [ -f "$ALS" ]; then
-      open -a "${ABLETON_APP:-/Applications/Ableton Live 12 Suite.app}" "$ALS"  # os-path-ok
+      open -a "${ABLETON_APP:-${AL_APP:-/Applications/Ableton Live 12 Suite.app}}" "$ALS"  # os-path-ok
     fi
     ;;
 

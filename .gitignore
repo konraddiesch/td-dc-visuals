@@ -16,3 +16,6 @@ __pycache__/
 Backup/
 CrashAutoSave*
 digital_carbs_visuals.*.toe
+
+# TouchDesigner scratch output (perf dumps, etc.)
+stat.txt

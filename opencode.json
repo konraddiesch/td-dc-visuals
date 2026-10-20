@@ -1,4 +1,16 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": ["AGENTS.md"]
+  "instructions": ["AGENTS.md"],
+  "mcp": {
+    "chan-tools": {
+      "type": "local",
+      "command": [
+        "bash",
+        "-lc",
+        "for d in \"$HOME/Code/chan-tools\" \"$PWD/../chan-tools\"; do [ -f \"$d/chan_mcp.py\" ] && exec python3 \"$d/chan_mcp.py\"; done; echo 'chan-tools/chan_mcp.py not found' >&2; exit 1"
+      ],
+      "cwd": ".",
+      "enabled": true
+    }
+  }
 }

@@ -4,8 +4,8 @@
       "type": "stdio",
       "command": "bash",
       "args": [
-        "-c",
-        "for d in \"$PWD/../chan-tools\" \"$HOME/Code/chan-tools\"; do [ -f \"$d/chan_mcp.py\" ] && exec python3 \"$d/chan_mcp.py\"; done; echo 'chan-tools/chan_mcp.py not found' >&2; exit 1"
+        "-lc",
+        "for d in \"$HOME/Code/chan-tools\" \"$PWD/../chan-tools\"; do [ -f \"$d/chan_mcp.py\" ] && exec python3 \"$d/chan_mcp.py\"; done; echo 'chan-tools/chan_mcp.py not found' >&2; exit 1"
       ]
     }
   }

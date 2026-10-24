@@ -13,6 +13,7 @@ __pycache__/
 *.pyc
 
 # TouchDesigner backups & crash autosaves (kept locally, not versioned)
+# TD's Increment Filename on Save history: kept on disk on purpose — do not delete
 Backup/
 CrashAutoSave*
 digital_carbs_visuals.*.toe

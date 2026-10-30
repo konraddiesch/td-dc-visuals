@@ -5,7 +5,7 @@
       "command": "bash",
       "args": [
         "-lc",
-        "for d in \"$HOME/Code/chan-tools\" \"$PWD/../chan-tools\"; do [ -f \"$d/chan_mcp.py\" ] && exec python3 \"$d/chan_mcp.py\"; done; echo 'chan-tools/chan_mcp.py not found' >&2; exit 1"
+        "for d in \"$HOME/Code/chan-tools\" \"$(git -C \"$PWD\" rev-parse --show-toplevel 2>/dev/null)/../chan-tools\"; do [ -f \"$d/chan_mcp.py\" ] && exec python3 \"$d/chan_mcp.py\"; done; echo 'chan-tools: chan_mcp.py not found' >&2; exit 1"
       ]
     }
   }

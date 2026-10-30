@@ -37,7 +37,7 @@ Verified 2026-10-17. Top level of `digital_carbs_visuals.toe`: `songs` (containe
 **Song switching** — `songs/registry` (tableDAT, one song name per row) is the single source of truth. `songs/01_start` (`onStart`) auto-wires every registry row to `pop_switch`/`top_switch` (input order = row order) and feeds `audio_analysis_in` + `midi_in` into each song. The active song is `songs/constant1['SongNumber']` (0-based) → `lag1` → `lag1_export` (CHOP Export DAT) → exported to `pop_switch.index` **and** `top_switch.index`.
 
 **Outputs**
-- Video: `top_switch` → `top_switch_out` → `top_out_select` (select-by-path) → `top_out` (outTOP) → `perform` window (`winop = /songs/top_out`). Preview/record tap: `songs/preview_out` → `/null1` → `/moviefileout1`.
+- Video: `top_switch` → `top_switch_out` → `top_out_select` (select-by-path) → `top_out` (outTOP) → `perform` window (`winop = /songs/top_out`). Preview/record tap: `songs/preview_out` → `/null1` → `/moviefileout1` (`record` off; `file` is an expression resolving to `Exports/renders/preview.mov`, not a repo-relative path).
 - DMX: `pop_switch` → `pop_switch_out` → `dmx_out_select` → `dmx_out` (`dmxoutPOP`, Enttec USB Pro, 44 Hz). **`dmx_out.active` is deliberately off** — enable it for a physical rig.
 - `/perform` (windowCOMP): `size=automatic` (follows the 1280×720 TOP), `borders=off`, `alwaysontop=on`, `cursorvisible=nocursor`, `blocksleep=on`, `single=singledisplay`.
 
@@ -54,10 +54,36 @@ Nothing in the `.toe` hardcodes a media or TD-install path. Verified live 2026-1
 - Helpers: `media()`, `lut()`, `samples()`, `install()`, `vst3()`, `ableton_set()`, `ocio_config()`, `report()`, `check()` — e.g. `mod('/config/paths').samples('Map/Banana.tif')`.
 - Because the DAT is sync-linked, editing `scripts/dc_paths.py` changes TD behaviour immediately; the `.py` is the source of truth, not the DAT.
 
+### Live media (`Live/`)
+
+`Live/` is the **stage**, `Library/` is the **archive**. TouchDesigner reads movies only from `Live/`; the 4K originals stay in `Library/Recordings/<Thema>/` and are never referenced by the `.toe`.
+
+```
+D:\Live\
+├── <song>\<song>_main.mov     one dir per registry entry, named exactly like the song
+├── _common\                   song-agnostic clips
+└── ...
+D:\Exports\                    renders, legacy takes — beside Live/, not inside it
+```
+
+- **Dir name = registry name** (`what_if`, `head_in_the_clouds` — not `what if`, not `hitc`), so the path is derivable: `Live/<song>/<song>_main.mov`.
+- **Role in the filename, not in a subdir**: `_main`, `_alt1`, `_alt2`. No `A/`, `B/`, `h264/`, `versions/` folders.
+- **ASCII, `snake_case`, no spaces, no umlauts.** A `what if` + U+F028 directory (private-use char from a macOS round-trip) is exactly what this rule prevents.
+- **Codec: HAP Q, 1280x720, 60 fps CFR, `-compressor none`** (~55 MB/s, ~1.2 GB per 20 s clip). HAP decodes on the GPU with a trivial CPU stage and needs no hardware-decode path. Rebuild with:
+
+  ```
+  ffmpeg -i <source> -vf "scale=1280:720:flags=lanczos,fps=60,format=rgba" \
+    -c:v hap -format hap_q -compressor none -an "D:\Live\<song>\<song>_main.mov"
+  ```
+
+- **Why 720p:** the Non-Commercial key caps TOP resolution at 1280x1280, so 4K sources are 9x wasted decode and upload. And 4:2:2 10-bit HEVC (iPhone/Blackmagic) is **not** NVDEC-decodable — it silently falls back to CPU, which is what the frame drops came from.
+- **Recordings go to `Exports/renders/`** via `mod('/config/paths').media('Exports/renders/...')`, never into the repo. The folder must exist on each machine — TD does not create it.
+- `_`-prefixed dirs are not songs and are ignored when walking the registry.
+
 **Rules for new nodes**
 - Never type an absolute path into a par. Use an expression: `mod('/config/paths').<helper>('relative/part')`.
 - `os` is **not** available in parameter expressions — put any logic in `scripts/dc_paths.py` and call it via `mod()`.
-- Song COMPs keep `par.File` / `par.Filesource` as **relative** constants (`Library/Recordings/Müll/müll_karo_3.mov`); internal nodes read them via `parent().par.File` / `parent().par.Filesource`. Never re-type the path in a child node.
+- Song COMPs keep `par.File` as a **relative** constant pointing into `Live/` (`Live/mr_five/mr_five_main.mov`); internal nodes read it via `parent().par.File` (resolved by `mod('/config/paths').media(...)`). Never re-type the path in a child node. ⚠️ `Filesource` is **not** the movie — it is the LUT (`The One LUT/theOne.cube`). The movie lives in `File`.
 - `externaltox` of a loaded component is relative to the `.toe` (e.g. `./audio_analysis/dc_audio_analysis_v2.tox`).
 - macOS stores paths NFD, Windows NFC — `dc_paths` normalizes to NFC, so write names as you see them.
 - Supposed to stay constant: OSC address patterns (`/listener/song/...`), scope patterns with `*`, node paths (`/project1/`), `/config`'s own root candidates, and `mcp_webserver_base` (never touch it).
@@ -102,7 +128,7 @@ Both never edit. `AGENTS.md` reaches subagents automatically, so `td-reviewer` d
 2. Name `<artist>_<song>_v1.tox` (e.g. `dc_what_if_v1.tox`)
 3. Load it into the `songs` COMP in `digital_carbs_visuals.toe`
 4. Add the COMP's name as a row in `songs/registry` — row order defines the `SongNumber` index and `songs/01_start` wires it to `pop_switch`/`top_switch` on `onStart`
-5. Keep the song's `File` / `Filesource` pars **relative** (`Library/Recordings/<artist>/<clip>.mov`) — see *Paths in the TD project*; internal nodes read them, never re-type the path
+5. Keep the song's `File` par **relative** and pointed at the transcoded live clip (`Live/<song>/<song>_main.mov`) — `Filesource` is the LUT, not the movie. Internal nodes read `parent().par.File`, never re-type the path (see *Live media*).
 6. After editing any .tox, re-save the main .toe to update references
 
 ## Parameter control bus (parent shortcuts)
@@ -134,7 +160,12 @@ Recorded at 60 fps, space-separated floats, one row per frame. Comment lines sta
 
 The `.chan` analysis tooling lives in its own repo — **`chan-tools`** (sibling convention: `<workspace>/../chan-tools`, i.e. `~/Code/chan-tools` on macOS, `/mnt/c/Code/chan-tools` in WSL) — not in this project. This repo only *references* it; credentials-free, project-agnostic. Keep the separation: don't re-vendor the scripts here.
 
-Both MCP harnesses resolve the server through the same fallback chain — `$HOME/Code/chan-tools` first, then `<workspace>/../chan-tools` — so nothing is hardcoded and the helper scripts always sit next to the server. The server resolves the *data* root from `CHAN_PROJECT_ROOT`, else the process cwd (the MCP host spawns it in the project workspace).
+Harness wiring differs, so nothing is hardcoded and the helper scripts always sit next to the server:
+
+- **opencode** — resolved from the *global* config `~/.config/opencode/opencode.jsonc` (candidate list with absolute fallbacks: `$HOME/Code`, `/mnt/c/Code`, `/Volumes/Visuals`). `opencode.json` deliberately has **no** `mcp` block: a project entry of the same name shadows the global one, and its only portable form is cwd-relative — which resolves against the *session* directory, so it fails for sessions started in a subdirectory (`data/<…>/`).
+- **Claude Code** — `.claude/settings.json` carries the project-local chain, anchored at the git toplevel (`$(git … rev-parse --show-toplevel)/../chan-tools`), so it works from any subdirectory.
+
+The server resolves the *data* root from `CHAN_PROJECT_ROOT`, else the process cwd (the MCP host spawns it in the project workspace).
 
 Dependencies: `numpy`, `matplotlib` (`chan-tools/requirements.txt`). The server
 is stdlib-only and falls back to `uv run --with numpy --with matplotlib` when
@@ -145,9 +176,9 @@ the interpreter lacks them.
 
 The MCP server `chan_mcp.py` auto-registers `chan_list`, `chan_info`,
 `chan_analyze`, `chan_plot`. A global opencode skill `chan-tools` documents the
-workflow — load it before any `.chan` MCP work. Wired in both harnesses via the
-same `bash -lc` fallback loop: `opencode.json` (project entry, which overrides
-the global `~/.config/opencode/opencode.jsonc`) and `.claude/settings.json`.
+workflow — load it before any `.chan` MCP work. Wired per harness as above:
+opencode through the global config (`opencode.json` must stay free of an `mcp`
+entry, see bullet list), Claude Code through `.claude/settings.json`.
 Path resolution: absolute → project root → `visuals/<path>` → bare filename
 anywhere in the project.
 
